@@ -1,0 +1,11 @@
+{
+  "name": "pencil-valuation-model",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "test": "npm run test -w @pencil/engine",
+    "build": "npm run build -w @pencil/engine && npm run build -w @pencil/web",
+    "dev": "npm run dev -w @pencil/web"
+  }
+}

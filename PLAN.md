@@ -73,9 +73,11 @@ recalculating live on every input change (a genuine improvement over the macro-d
 ### 2.1 Repository layout
 
 ```
-web/
+package.json            # npm workspaces root
+packages/engine/        # pure TS model library (shared with v2 backend later)
+apps/web/               # Vite + React SPA
   src/
-    engine/
+    engine -> imports @pencil/engine
       types.ts            # Input schema (assumptions, tenancy rows, outgoings) + result types
       dates.ts            # EOMONTH-style month-end helpers, model timeline
       growth.ts           # CPI/capex/outgoings/market growth curves, compound indices
@@ -101,6 +103,10 @@ web/
       outputs/
         SummaryPage.tsx       # Executive summary (OP_Exec + DCF-Output content)
         CashflowPage.tsx      # Annual & monthly cash flow (OP_CashFlow_A/M + Calc_DCF views)
+        TenancyPage.tsx       # Tenancy summary + market rental profile (OP_Tenancy)
+        AnalysisPage.tsx      # Top-10 by area/income, expiry profile, WALE (OP_Analysis)
+        RatesPage.tsx         # Office/Retail growth forecasts (OP_Rates)
+        ReportPage.tsx        # Full report + PDF download (OP_Report)
   test/
     fixtures/             # Input + expected-output cases
     engine/*.test.ts      # Vitest unit + parity tests
@@ -173,9 +179,51 @@ PLAN.md
   commissions, incentives, capital upgrades) — the OP_CashFlow_A layout.
 - CSV export of any table.
 
-Out of scope for v1 (can be added later): OP_Tenancy/OP_Analysis/OP_Rates/OP_Report analytics
-pages, PDF report generation, Excel round-trip import/export, multi-scenario comparison,
-authentication/multi-user storage.
+**Tenancy page** (mirrors `OP_Tenancy`): tenancy summary table (per tenant: suite, NLA, car
+parks, status, lease type, tenant, start/expiry/term, reviews, passing rent $ p.a. and $/m²,
+parking, outgoings recovered, total gross passing rent, totals row) and market rental profile
+table (assigned profile assumptions: lease term, renewal probability, average growth, incentive,
+commissions, capex on expiry, market rent $ p.a. / $/m²).
+
+**Analysis page** (mirrors `OP_Analysis`): top-10 tenants by area (NLA, % of NLA, car parks)
+with NLA-breakdown chart, top-10 by income with income-share chart, lease-expiry profile by
+model year (tenant count, NLA, % expiring) with expiry chart, and WALE by income and by area.
+
+**Rates page** (mirrors `OP_Rates`): Office and Retail growth-forecast tables — face gross/net
+$/m² and growth %, incentive %, effective gross/net, outgoings $/m² — plus 3/5/10-year compound
+averages, per model year.
+
+**Report page + PDF** (mirrors `OP_Report`): printable valuation report — property and valuation
+particulars, vacancy schedule, outstanding incentives, DCF transaction costs, DCF present-value
+summary, NPV and IRR sensitivity matrices, static (capitalisation) calculation summary, adopted
+value and valuer sign-off. A **Download PDF** button generates a paginated PDF client-side
+(jsPDF + autotable); the page also carries a print stylesheet as a fallback.
+
+Out of scope for v1 (deferred to v2+): Excel round-trip import/export, multi-scenario
+comparison, authentication and server-side storage.
+
+---
+
+## 2.5 v2-readiness (per-client backend + database later)
+
+v2 will add a backend per client and a database. v1 is structured so that step is additive,
+not a rewrite:
+
+1. **npm-workspaces monorepo:** `packages/engine` (pure TypeScript, zero browser/DOM
+   dependencies) + `apps/web` (Vite React SPA). In v2 an `apps/api` service imports the very
+   same engine package to compute server-side — no duplicated model logic.
+2. **Storage behind an interface:** all persistence goes through a `StorageAdapter`
+   (`list / load / save / remove`). v1 ships `LocalStorageAdapter`; v2 adds an
+   `ApiStorageAdapter` (REST/JSON) with the same contract — the UI doesn't change.
+   v1 already supports **multiple named valuations** (a local library), which maps 1:1 onto
+   the future `clients/valuations` database schema.
+3. **Versioned document schema:** every valuation JSON carries `schemaVersion`; a migration
+   registry upgrades older documents on load. The same JSON is the v2 API payload and DB
+   document format.
+4. **Pure-function engine API:** `runModel(inputs) → results` is stateless and synchronous, so
+   it can run in the browser (v1), in a worker, or on a server (v2) unchanged.
+5. **No browser-globals in engine or state logic**; environment-specific code (localStorage,
+   file download, PDF) is isolated in `apps/web/src/platform/`.
 
 ---
 
@@ -196,10 +244,11 @@ authentication/multi-user storage.
 ## 4. Implementation phases
 
 1. **Engine core** — types, dates, growth, tenant cash flow, building aggregation + tests.
-2. **Valuations** — cap + DCF + IRR + sensitivities + tests against fixtures.
+2. **Valuations** — cap + DCF + IRR + sensitivities + analytics (WALE, expiry, top-10) + tests.
 3. **Input UI** — all eight input pages with instructions, validation, persistence, defaults.
-4. **Output UI** — Summary and Cashflow pages, CSV export, charts.
-5. **Polish & ship** — error-check panel, responsive layout, README with usage guide, static
+4. **Output UI** — Summary, Cashflow, Tenancy, Analysis, Rates pages; CSV export; charts.
+5. **Report & PDF** — Report page + client-side PDF generation.
+6. **Polish & ship** — error-check panel, responsive layout, README with usage guide, static
    build; deploy (GitHub Pages via Actions, or Vercel — to confirm).
 
 Each phase lands as commits on `claude/reas-valuation-web-plan-pqrmcj`.
@@ -208,9 +257,11 @@ Each phase lands as commits on `claude/reas-valuation-web-plan-pqrmcj`.
 
 | Decision | Assumption |
 |---|---|
-| Hosting/backend | Pure client-side SPA, static hosting, no login, data stays in the browser + JSON export |
-| Framework | React + TypeScript + Vite |
-| Outputs in v1 | Summary page + Cashflow (annual & monthly); other OP_* sheets deferred |
+| Hosting/backend | v1: pure client-side SPA, static hosting, no login, data in browser + JSON export. v2: per-client backend + DB via the adapter/monorepo seams in §2.5 |
+| Framework | React + TypeScript + Vite; engine as separate workspace package |
+| Outputs in v1 | Summary, Cashflow (annual & monthly), Tenancy, Analysis, Rates, Report + PDF |
+| PDF | Client-side jsPDF; print stylesheet as fallback |
 | Tenant count | Unlimited rows (workbook template ships with 2); engine loops natively |
-| Excel features dropped | VBA macros (Update Calcs / Insert Tenant / protect), print/report layout sheets |
+| Excel features dropped | VBA macros (Update Calcs / Insert Tenant / protect), print-layout working sheets |
 | Currency/locale | AUD formatting `$`, m² areas, per-annum conventions as in workbook |
+| Known workbook quirk | `CF_Tenant` adds the upfront incentive amount in every month; the web engine applies it once (documented correction) |
