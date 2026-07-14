@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useStore } from './state/store';
 import { downloadJson, pickJsonFile } from './platform/files';
+import { fmtPct } from './format';
+import { LogoWordmark } from './components/Logo';
 import { GeneralPage } from './pages/inputs/GeneralPage';
 import { ProfilesPage } from './pages/inputs/ProfilesPage';
 import { ValuationAssumptionsPage } from './pages/inputs/ValuationAssumptionsPage';
@@ -19,19 +21,20 @@ import { ReportPage } from './pages/outputs/ReportPage';
 interface Route {
   path: string;
   label: string;
+  kicker?: string;
   group: 'Inputs' | 'Outputs';
   component: () => JSX.Element;
 }
 
 const ROUTES: Route[] = [
-  { path: 'general', label: '1. General & Costs', group: 'Inputs', component: GeneralPage },
-  { path: 'profiles', label: '2. Vacant Space Profiles', group: 'Inputs', component: ProfilesPage },
-  { path: 'valuation', label: '3. Valuation Assumptions', group: 'Inputs', component: ValuationAssumptionsPage },
-  { path: 'other-income', label: '4. Other Income', group: 'Inputs', component: OtherIncomePage },
-  { path: 'capex', label: '5. Capital Expenditure', group: 'Inputs', component: CapexPage },
-  { path: 'growth', label: '6. Growth Rates', group: 'Inputs', component: GrowthPage },
-  { path: 'tenancy', label: '7. Tenancy Schedule', group: 'Inputs', component: TenancyInputPage },
-  { path: 'outgoings', label: '8. Outgoings', group: 'Inputs', component: OutgoingsPage },
+  { path: 'general', label: 'General & Costs', kicker: '1', group: 'Inputs', component: GeneralPage },
+  { path: 'profiles', label: 'Vacant Space Profiles', kicker: '2', group: 'Inputs', component: ProfilesPage },
+  { path: 'valuation', label: 'Valuation Assumptions', kicker: '3', group: 'Inputs', component: ValuationAssumptionsPage },
+  { path: 'other-income', label: 'Other Income', kicker: '4', group: 'Inputs', component: OtherIncomePage },
+  { path: 'capex', label: 'Capital Expenditure', kicker: '5', group: 'Inputs', component: CapexPage },
+  { path: 'growth', label: 'Growth Rates', kicker: '6', group: 'Inputs', component: GrowthPage },
+  { path: 'tenancy', label: 'Tenancy Schedule', kicker: '7', group: 'Inputs', component: TenancyInputPage },
+  { path: 'outgoings', label: 'Outgoings', kicker: '8', group: 'Inputs', component: OutgoingsPage },
   { path: 'summary', label: 'Executive Summary', group: 'Outputs', component: SummaryPage },
   { path: 'cashflow', label: 'Cash Flow', group: 'Outputs', component: CashflowPage },
   { path: 'tenancy-summary', label: 'Tenancy', group: 'Outputs', component: TenancyOutputPage },
@@ -50,10 +53,18 @@ function useHashRoute(): string {
   return hash || 'summary';
 }
 
+const fmtCompact = (v: number): string =>
+  Math.abs(v) >= 1e6
+    ? `$${(v / 1e6).toFixed(2)}m`
+    : Math.abs(v) >= 1e3
+      ? `$${Math.round(v / 1e3)}k`
+      : `$${Math.round(v)}`;
+
 export function App() {
   const route = useHashRoute();
   const store = useStore();
   const errorCount = store.results.issues.filter((i) => i.severity === 'error').length;
+  const warnCount = store.results.issues.filter((i) => i.severity === 'warning').length;
   const active = ROUTES.find((r) => r.path === route) ?? ROUTES[8];
   const Page = active.component;
 
@@ -67,8 +78,7 @@ export function App() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <h1>Pencil Valuation Model</h1>
-        <p className="tagline">DCF & capitalisation valuation</p>
+        <LogoWordmark />
 
         {(['Inputs', 'Outputs'] as const).map((group) => (
           <nav className="nav-group" key={group}>
@@ -79,7 +89,8 @@ export function App() {
                 href={`#/${r.path}`}
                 className={`nav-link${r.path === active.path ? ' active' : ''}`}
               >
-                {r.label}
+                {r.kicker ? <span className="nav-kicker">{r.kicker}</span> : <span className="nav-dot" />}
+                <span className="nav-label">{r.label}</span>
                 {r.path === 'tenancy' && errorCount > 0 ? (
                   <span className="nav-badge">{errorCount}</span>
                 ) : null}
@@ -88,21 +99,16 @@ export function App() {
           </nav>
         ))}
 
-        <nav className="nav-group">
+        <nav className="nav-group nav-library">
           <p className="nav-group-title">Valuation library</p>
           <ul className="library-list">
             {store.library.map((v) => (
-              <li key={v.id}>
-                <span
-                  className="name"
-                  title={v.name}
-                  style={{ fontWeight: v.id === store.docId ? 700 : 400 }}
-                  onClick={() => void store.openValuation(v.id)}
-                >
+              <li key={v.id} className={v.id === store.docId ? 'current' : ''}>
+                <span className="name" title={v.name} onClick={() => void store.openValuation(v.id)}>
                   {v.name}
                 </span>
                 <button
-                  className="btn btn-ghost btn-danger"
+                  className="lib-delete"
                   title="Delete"
                   onClick={() => {
                     if (confirm(`Delete "${v.name}"?`)) void store.deleteValuation(v.id);
@@ -113,34 +119,67 @@ export function App() {
               </li>
             ))}
           </ul>
-          <button className="btn" style={{ width: '100%' }} onClick={() => store.newValuation()}>
+          <button className="btn btn-sidebar" onClick={() => store.newValuation()}>
             + New valuation
           </button>
         </nav>
+
+        <p className="sidebar-foot">All data stays in your browser.</p>
       </aside>
 
       <main className="main">
-        <div className="page-title">
-          <h1>{active.label}</h1>
-          <span className="subtitle">
-            {store.inputs.general.buildingName || 'Unnamed property'} ·{' '}
-            {store.inputs.general.address}
+        <header className="topbar">
+          <div className="topbar-left">
+            <p className="topbar-kicker">
+              {active.group} {active.kicker ? `· Sheet ${active.kicker}` : ''}
+            </p>
+            <h1>{active.label}</h1>
+            <p className="topbar-subtitle">
+              {store.inputs.general.buildingName || 'Unnamed property'}
+              {store.inputs.general.address ? ` · ${store.inputs.general.address}` : ''}
+            </p>
+          </div>
+          <div className="topbar-right">
+            <input
+              className="docname"
+              type="text"
+              value={store.docName}
+              onChange={(e) => store.setDocName(e.target.value)}
+              aria-label="Valuation name"
+            />
+            <button className="btn" onClick={exportJson}>Export JSON</button>
+            <button className="btn" onClick={() => void importJson()}>Import JSON</button>
+          </div>
+        </header>
+
+        <div className="ribbon">
+          <span className={`ribbon-status ${errorCount > 0 ? 'bad' : 'good'}`}>
+            <span className="dot" />
+            {errorCount > 0
+              ? `${errorCount} input error${errorCount > 1 ? 's' : ''}`
+              : warnCount > 0
+                ? `Inputs OK · ${warnCount} warning${warnCount > 1 ? 's' : ''}`
+                : 'Inputs OK'}
           </span>
+          <span className="ribbon-chip">
+            <span className="chip-label">Capitalisation</span>
+            {fmtCompact(store.results.cap.adjustedCoreCapitalValue)}
+          </span>
+          <span className="ribbon-chip">
+            <span className="chip-label">DCF</span>
+            {fmtCompact(store.results.dcf.capitalValue)}
+          </span>
+          <span className="ribbon-chip">
+            <span className="chip-label">Adopted</span>
+            {fmtCompact(store.inputs.general.adoptedValue)}
+          </span>
+          <span className="ribbon-chip">
+            <span className="chip-label">IRR</span>
+            {store.results.dcf.irr == null ? 'n/a' : fmtPct(store.results.dcf.irr)}
+          </span>
+          <span className="ribbon-live" title="Recalculates on every input change">live</span>
         </div>
-        <div className="toolbar">
-          <input
-            type="text"
-            value={store.docName}
-            onChange={(e) => store.setDocName(e.target.value)}
-            aria-label="Valuation name"
-          />
-          <button className="btn" onClick={exportJson}>
-            Export JSON
-          </button>
-          <button className="btn" onClick={() => void importJson()}>
-            Import JSON
-          </button>
-        </div>
+
         <Page />
       </main>
     </div>
