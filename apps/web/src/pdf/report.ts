@@ -38,7 +38,7 @@ export function generateReportPdf(results: ModelResults): void {
       body: body.map((r) => r.map(String)),
       margin: { left: MARGIN, right: MARGIN },
       styles: { fontSize: 7.5, cellPadding: 1.4 },
-      headStyles: { fillColor: [42, 120, 214], textColor: 255 },
+      headStyles: { fillColor: [27, 43, 77], textColor: 255 },
       columnStyles: Object.fromEntries(
         head.map((_, i) => [i, { halign: i === 0 ? 'left' : 'right' } as const]),
       ),
@@ -47,8 +47,28 @@ export function generateReportPdf(results: ModelResults): void {
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
   };
 
-  /* ---- Title page header ---- */
+  /* ---- Branded title banner ---- */
+  doc.setFillColor(27, 43, 77); // brand ink navy
+  doc.rect(0, 0, 210, 30, 'F');
+  // pencil trend-stroke motif
+  doc.setDrawColor(242, 163, 60);
+  doc.setLineWidth(1.6);
+  doc.line(MARGIN, 23, MARGIN + 20, 8);
+  doc.setFillColor(242, 163, 60);
+  doc.triangle(MARGIN + 19.2, 9.6, MARGIN + 23.5, 5.3, MARGIN + 21.5, 11.3, 'F');
+  doc.setTextColor(255, 255, 255);
   doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Pencil', MARGIN + 30, 14);
+  doc.setTextColor(242, 163, 60);
+  doc.text('.', MARGIN + 30 + doc.getTextWidth('Pencil'), 14);
+  doc.setTextColor(199, 209, 228);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text('VALUATION MODEL', MARGIN + 30, 20, { charSpace: 1 });
+  doc.setTextColor(0, 0, 0);
+  y = 40;
+  doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
   doc.text('Valuation Report', MARGIN, y);
   y += 8;

@@ -130,9 +130,8 @@ export function DataTable({
 }
 
 export function IssuePanel({ issues }: { issues: ValidationIssue[] }) {
-  if (issues.length === 0) {
-    return <div className="issues ok">Inputs OK — all checks passed.</div>;
-  }
+  // The topbar ribbon already shows the all-clear state; only surface problems.
+  if (issues.length === 0) return null;
   return (
     <div className="issues">
       {issues.map((i, k) => (
